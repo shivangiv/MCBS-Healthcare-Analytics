@@ -1,0 +1,124 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set( warning=FALSE, message=FALSE)
+```
+
+
+```{r}
+library(data.table)
+library(tidyverse)
+
+fall18<-fread("MCBSPUF18/puf2018_1_fall.csv")
+
+
+fall18_reformatted<-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
+
+
+#ageclass=ADM_H_MEDSTA, insurance_type: Adm_op,dual etc
+
+colnames(fall18)
+```
+
+
+
+
+```{r}
+
+# sum(is.na(fall18))
+dim(fall18)
+# na.omit(fall18)
+# sum(is.na(fall18))
+fall18<-fall18[,c(1,4:238)]
+
+dim(fall18)
+fall18
+
+colnames(fall18)
+head(fall18)
+```
+
+
+### Preprocessing
+
+Data Dictionary:
+
+ADM_H_MEDSTA: 1: elderly or 2: disabled or  3: unknown
+ADM_H_GHPSW: 1: anyMA 0: no
+ADM_H_PDRS: retiree drug subsidy(RDS) 1:not subsidized, 2: sub part year 3: sub full year, .:N/A, missing
+
+insurance supplement type hierarchy being "Medicaid">"MAdv">"FFSwESI">"FFSwSelf">"FFSnoSupp"*/
+
+
+```{r}
+#Insurance Type
+fall18<-fall18%>%mutate(ins_type=
+                         case_when(
+                            ADM_DUAL_FLAG_YR%in%c(2,3) ~ "Medicaid" ,
+                            INS_D_MADV==1 ~"MAdv",
+                            INS_D_PVESI==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwESI",
+                            INS_D_PVSELF==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwSelf",
+                        ADM_FFS_FLAG_YR%in%c(2,3)&INS_D_MADV==2&INS_D_PVESI==2&INS_D_PVSELF==2~"OnlyFFS",
+                          TRUE ~"Missing"))
+
+
+```
+
+
+Demograhpics:
+
+DEM_AGE: 1: disabled, 2: 65-74 3: elderly >=75 
+
+new col: 'ageclass' 1: disabled 2: elderly
+
+DEM_SEX: 1:male 2: female
+
+DEM_RACE: 1:non hisp white 2: non hisp black 3: hisp 4: other
+
+DEM_EDU: 1: no hs 2: hs / vocational/tech/business
+3: more than hs
+
+DEM_MARSTA: 1: married 2: widowed 3: divorced/separated 4:never married
+
+new col 'marital_status': 1: married 2: widowed 3: single
+DEM_INCOME: 1: <25k, 2:>=25k
+
+DEM_CBSA: 1: metro 2: non-metro
+
+DEM_IPR_IND: income poverty ratio medicare threshold 
+1: <=100% of the Federal Poverty Level                            2  2: >100% and <=120% of the Federal Poverty                    3: >120% and <=135% of the Federal Poverty                        4: >135% and <=200% of the Federal Poverty                       5: >200% of the Federal Poverty Level 
+
+ACC_HCDELAY: 1: yes 2:no
+```{r}
+
+#Creating new columns Ageclass and marital status
+fall18<-fall18%>%
+  mutate(ageclass=ifelse(fall18$DEM_AGE==1,1,2))%>%
+  mutate(
+    marital_status=ifelse(DEM_MARSTA==1,1,
+                          ifelse(DEM_MARSTA==2,2,
+                                 ifelse(DEM_MARSTA%in%c(3,4),3,0)
+                                 )
+                          )
+        )
+
+
+lapply(fall18[,-1], unique)
+
+
+
+#Clean non response
+fall18<-fall18 %>%
+      mutate_all(~ replace(.,.%in%c("D","R",""), 99))
+
+
+dim(fall18)
+
+
+
+
+```
+
