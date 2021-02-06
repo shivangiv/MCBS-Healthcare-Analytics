@@ -118,6 +118,11 @@ fall18<-fall18 %>%
 dim(fall18)
 
 
+lapply(fall18,typeof)
+
+#change char to num
+fall18<-fall18%>%mutate_if(is.character,as.numeric)
+
 
 
 ```
