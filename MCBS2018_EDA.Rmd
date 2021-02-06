@@ -7,6 +7,8 @@ output: html_notebook
 knitr::opts_chunk$set( warning=FALSE, message=FALSE)
 ```
 
+### Cost Burden 
+
 
 ```{r}
 library(data.table)
@@ -126,4 +128,9 @@ fall18<-fall18%>%mutate_if(is.character,as.numeric)
 
 
 ```
+
+#flag for checking whether insurance was not accepted by doc
+
+Variables of significance:
+MA_MADVYRS- those who have MCD for longer, do they have more costs?
 
