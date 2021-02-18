@@ -1,5 +1,7 @@
 ---
-title: "R Notebook"
+title: "ALY6160_GroupProject"
+author: "Catherine Richard, Shivangi Vashi"
+date: "2/6/2021"
 output: html_notebook
 ---
 
@@ -13,11 +15,14 @@ knitr::opts_chunk$set( warning=FALSE, message=FALSE)
 ```{r}
 library(data.table)
 library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(skimr)
 
-fall18<-fread("MCBSPUF18/puf2018_1_fall.csv")
+fall18 <-fread("MCBSPUF18/puf2018_1_fall.csv")
 
 
-fall18_reformatted<-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
+fall18_reformatted <-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
 
 
 #ageclass=ADM_H_MEDSTA, insurance_type: Adm_op,dual etc
@@ -41,6 +46,9 @@ fall18
 
 colnames(fall18)
 head(fall18)
+
+fall18_reformatted  <- fall18_reformatted  %>%
+ select(-SURVEYYR, -VERSION, -PUF_ID)
 ```
 
 
@@ -129,8 +137,28 @@ fall18<-fall18%>%mutate_if(is.character,as.numeric)
 
 ```
 
-#flag for checking whether insurance was not accepted by doc
+# flag for checking whether insurance was not accepted by doc
 
 Variables of significance:
 MA_MADVYRS- those who have MCD for longer, do they have more costs?
+
+```{r}
+
+
+
+
+
+
+```
+
+
+### Exploratory Data Analysis 
+
+```{r}
+
+
+
+
+
+```
 
