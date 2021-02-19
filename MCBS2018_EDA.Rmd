@@ -11,11 +11,12 @@ knitr::opts_chunk$set( warning=FALSE, message=FALSE)
 
 
 ```{r}
-library(data.table)
+library(data.table) 
 library(tidyverse)
 
-fall18<-fread("MCBSPUF18/puf2018_1_fall.csv")
-
+fall18<-fread("MCBSPUF18/puf2018_1_fall.csv") 
+fall18<-as.data.frame(fall18)
+summer18<-fread("MCBSPUF18/puf2018_3_summer.csv")
 
 fall18_reformatted<-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
 
@@ -29,15 +30,13 @@ colnames(fall18)
 
 
 ```{r}
-
-# sum(is.na(fall18))
 dim(fall18)
-# na.omit(fall18)
-# sum(is.na(fall18))
-fall18<-fall18[,c(1,4:238)]
+
+fall18<-fall18[,c(1,4:239)]
+summer18<-summer18[,c(1,4:37)]
 
 dim(fall18)
-fall18
+
 
 colnames(fall18)
 head(fall18)
@@ -57,14 +56,15 @@ insurance supplement type hierarchy being "Medicaid">"MAdv">"FFSwESI">"FFSwSelf"
 
 ```{r}
 #Insurance Type
-fall18<-fall18%>%mutate(ins_type=
-                         case_when(
-                            ADM_DUAL_FLAG_YR%in%c(2,3) ~ "Medicaid" ,
-                            INS_D_MADV==1 ~"MAdv",
-                            INS_D_PVESI==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwESI",
-                            INS_D_PVSELF==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwSelf",
+fall18<-fall18%>%
+              mutate(ins_type=case_when(
+                        ADM_DUAL_FLAG_YR%in%c(2,3) ~ "Medicaid" ,
+                        INS_D_MADV==1 ~"MAdv",
+                        INS_D_PVESI==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwESI",
+                        INS_D_PVSELF==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwSelf",
                         ADM_FFS_FLAG_YR%in%c(2,3)&INS_D_MADV==2&INS_D_PVESI==2&INS_D_PVSELF==2~"OnlyFFS",
                           TRUE ~"Missing"))
+
 
 
 ```
@@ -90,8 +90,6 @@ DEM_INCOME: 1: <25k, 2:>=25k
 
 DEM_CBSA: 1: metro 2: non-metro
 
-DEM_IPR_IND: income poverty ratio medicare threshold 
-1: <=100% of the Federal Poverty Level                            2  2: >100% and <=120% of the Federal Poverty                    3: >120% and <=135% of the Federal Poverty                        4: >135% and <=200% of the Federal Poverty                       5: >200% of the Federal Poverty Level 
 
 ACC_HCDELAY: 1: yes 2:no
 ```{r}
@@ -106,24 +104,170 @@ fall18<-fall18%>%
                                  )
                           )
         )
+fall18<-fall18%>%select(-DEM_MARSTA)
 
-
-lapply(fall18[,-1], unique)
-
-
+#checking unieuq values for each variable
+# lapply(fall18[,-1], unique)
 
 #Clean non response
-fall18<-fall18 %>%
+fall18<-fall18%>%
       mutate_all(~ replace(.,.%in%c("D","R",""), 99))
 
-
+summer18<-summer18%>%
+      mutate_all(~ replace(.,.%in%c("D","R",""), 99))
 dim(fall18)
+dim(mcbs)
 
 
 lapply(fall18,typeof)
-
+fall18
 #change char to num
 fall18<-fall18%>%mutate_if(is.character,as.numeric)
+summer18<-summer18%>%mutate_if(is.character,as.numeric)
+
+```
+
+so for ex: 
+if sum(fall18$ACC_HCTROUBL==99)/nrow(fall18) is <1.0
+then fall18<-fall18[fall18$ACC_HCTROUBL!=99]
+```{r}
+
+na<-function(v,df){
+  x=(length(which(v==99))/nrow(fall18))
+   if(x<0.01&x!=0){
+     df<-df[df$v!=99,]
+   }
+
+}
+
+na<-function(v){
+   return ((length(which(v==99))/nrow(fall18))>0.01)
+}
+
+
+for(i in 1:length(fall18)){
+    fall18<-fall18%>%subset(subset=na(fall18[i]))
+}
+(length(which(fall18$ADM_OP_MDCD==99))/nrow(fall18))
+
+#Removing NAs from variables of interest if %NA is small
+
+
+sum(fall18$ACC_HCTROUBL==99)/nrow(fall18)
+sum(fall18$ACC_HCTRBMNY==99)/nrow(fall18)
+sum(fall18$ACC_PAYPROB==99)/nrow(fall18)
+sum(fall18$ACC_PAYOVRTM==99)/nrow(fall18)
+sum(fall18$DEM_EDU==99)/nrow(fall18)
+sum(fall18$ACC_PMNOTGET==99)/nrow(fall18)
+
+
+fall18<-fall18[fall18$ACC_HCDELAY!=99,]
+fall18<-fall18[fall18$ACC_HCTROUBL!=99,]
+fall18<-fall18[fall18$ACC_PAYPROB!=99,]
+fall18<-fall18[fall18$DEM_EDU!=99,]
+
+```
+value numComor
+0-1="0-1"
+2-3="2-3"
+4-10="4-10"
+other='5. Missing';
+
+cardio:
+HLT_OCARTERY 
+HLT_OCMYOCAR 
+HLT_OCCHD 
+HLT_OCCFAIL
+HLT_OCHRTCND //valve and rhythm, ocothhrt
+if !=1 and !=2, then 99 else if x or y or z 1: then 1
+
+
+Arthritis:
+HLT_OCARTHRH 
+HLT_OCARTHOT 
+HLT_OCOSARTH 
+if both not 1 and 2- 99
+if either 1 then 1
+
+cancer:
+HLT_OCCANCER
+HLT_OCCSKIN
+if both not 1 and 2 then 99, else if either 1 then 1
+
+cvd:
+ 
+HLT_OCARTERY  
+HLT_OCMYOCAR
+HLT_OCCHD
+HLT_OCCFAIL
+HLT_OCCHBP
+HLT_OCSTROKE
+if all not 1 and not 2 then 99, else if either 1 then 1
+
+
+Mental disorder and depression:
+uberpsych
+HLT_OCPSYCHO
+HLT_OCDEPRESS
+
+only mental dis: opsycho
+only depr: ocdepress
+
+neurological- HLT_OCPPARAL
+
+hbp: OCHBP
+stroke: OCSTROKE
+diabetes: ocdiabetes
+
+alzheimers or dementia: HLT_ALZDEM 
+emphysema: HLT_OCEMPHYS
+
+
+
+/*Disease array for COMORBS*/
+if (cardio				^= 99 or 
+	stroke				^= 99 or 
+	cancer				^= 99 or 
+	diabetes			^= 99 or 
+	arthritis			^= 99 or 
+	alzheimer_dementia	^= 99 or
+	uberpsych			^= 99 or 
+	neuro				^= 99 or 	
+	emphysema			^= 99 or 
+	hbp				^= 99)
+	then total= sum(cardio,stroke,cancer,diabetes,arthritis,alzheimer_dementia,uberpsych,neuro,emphysema,hbp);
+	else total=0;
+
+cardio:
+HLT_OCARTERY 
+HLT_OCMYOCAR 
+HLT_OCCHD 
+HLT_OCCFAIL
+HLT_OCHRTCND //valve and rhythm, ocothhrt
+if !=1 and !=2, then 99 else if x or y or z 1: then 1
+
+```{r}
+flag=0
+flag<-function(x,flag){
+  if(x!=1&x!=2){
+    flag=99
+  }
+  else if(x==1){
+    flag=1
+  }
+  return (flag)
+}
+c=0
+fall18$HLT_OCARTERY
+flag(select(fall18,"HLT_OCARTERY"),c)
+
+cardio<-c("HLT_OCARTERY" ,"HLT_OCMYOCAR", "HLT_OCCHD","HLT_OCCFAIL","HLT_OCHRTCND")
+c=0
+
+for(i in 1:length(cardio)){
+  flag(select(fall18,i),c)
+}
+
 
 
 
@@ -133,4 +277,151 @@ fall18<-fall18%>%mutate_if(is.character,as.numeric)
 
 Variables of significance:
 MA_MADVYRS- those who have MCD for longer, do they have more costs?
+
+```{r}
+
+```
+
+
+### Exploratory Data Analysis
+```{r}
+# Age groups suffering from hcdelay
+fall18 %>%
+  group_by(DEM_AGE,ACC_HCDELAY) %>%
+  summarise(population=n())%>%
+  ggplot( aes(x = DEM_AGE, y = population, fill = ACC_HCDELAY)) + 
+  geom_col(position = "fill")
+
+
+
+```
+
+```{r}
+
+df<-data.frame(table(fall18$ins_type,fall18$ACC_HCDELAY))
+names(df) <- c("ins_type","ACC_HCDELAY","Count")
+df
+table(fall18$ACC_HCDELAY)
+
+# fall18 %>% 
+#   filter(fall18$MA_MADVYRS!=99&fall18$ACC_HCDELAY!=99)%>%
+#   group_by(MA_MADVYRS, ACC_HCDELAY) %>% 
+#   summarise(total_weight = sum(PUFFWGT)) %>% 
+#   ggplot(aes(x = MA_MADVYRS, fill = ACC_HCDELAY, y =total_weight)) +
+#   geom_bar(stat = "identity", position = "dodge")
+
+
+
+```
+
+```{r fig.width=12}
+library(GGally)
+library(ggparallel)
+
+fall18$ACC_HCDELAY<-as.factor(fall18$ACC_HCDELAY)
+
+colnames(fall18)
+ggparcoord(fall18,columns=c(236,36:38,40:41,44:46,49),groupColumn =48,scale="globalminmax")
+
+fall18[,c(38:40,42:43,46:48,51)]
+
+```
+
+
+```{r}
+fall18[fall18$ACC_HCDELAY!=99,]%>%table(fall18$DEM_AGE,fall18$ACC_HCDELAY)
+  ggplot(aes(x=DEM_AGE,fill=ACC_HCDELAY))+geom_bar(stat="count")
+
+fall18%>%
+  filter(fall18$MA_MADVYRS!=99&fall18$ACC_HCDELAY!=99)%>%
+  ggplot(aes(x =MA_MADVYRS,fill = ACC_HCDELAY, y = PUFFWGT))+
+  stat_summary(geom = "col", position = "dodge", fun = sum)
+
+
+df[df$ACC_HCDELAY!=99,]%>%
+  ggplot(aes(x=ins_type, y=Count, fill=ACC_HCDELAY))+geom_bar(stat="identity")
+
+
+
+table(fall18$ins_type)
+fall18$HCDELAY<-fall18$ACC_HCDELAY*fall18$PUFFWGT
+
+fall18%>%ggplot(aes(y=ageclass))+geom_bar(stat = "count")+coord_flip()
+fall18%>%ggplot(aes(y=ins_type))+geom_bar(stat = "count")+coord_flip()
+
+fall18_reformatted%>%ggplot(aes(y=DEM_Race))+geom_bar(stat = "count")+coord_flip()
+
+fall18 %>%
+  group_by(DEM_AGE, DEM_INCOME) %>%
+  summarise(total_weight = sum(PUFFWGT)) %>%
+  ggplot(aes(x = DEM_AGE, fill = DEM_INCOME, y =total_weight)) +
+  geom_bar(stat = "identity", position = "dodge")
+
+
+fall18_reformatted$PUFFWGT<-fall18$PUFFWGT
+
+
+fall18_reformatted %>%
+  group_by(DEM_AGE, DEM_INCOME) %>%
+  summarise(total_weight = sum(PUFFWGT)) %>%
+  ggplot(aes(x = DEM_AGE, fill = DEM_INCOME, y =total_weight)) +
+  geom_bar(stat = "identity", position = "dodge")
+
+
+
+
+fall18_reformatted %>%filter(fall18_reformatted$MA_MADVYRS!="Inapplicable/Missing")%>%
+  group_by(MA_MADVYRS, ACC_HCDELAY) %>%
+  summarise(total_weight = sum(PUFFWGT)) %>%
+  ggplot(aes(x = MA_MADVYRS, fill = ACC_HCDELAY, y =total_weight)) +
+  geom_bar(stat = "identity", position = "dodge")
+
+
+colnames(fall18)
+table(fall18$ACC_PAYPROB)
+
+fall18[,c(30:49,51,53:54,236)]%>%filter_at(vars(ACC_HCDELAY,ACC_COLAGNCY,MA_MADVYRS),all_vars(.!=99))%>%cor()%>%ggcorrplot::ggcorrplot()
+```
+
+#### Correlation Analysis
+```{r}
+
+fallsum<-inner_join(fall18,summer18,by="PUF_ID")
+
+fallsum[,c(38:49,51,53:54,236,241:244,262:269)]%>%cor()%>%ggcorrplot::ggcorrplot()
+
+colnames(fallsum)
+```
+
+##Univariate Analysis
+
+
+Distribution of income, poverty line
+DEM_INCOME:
+DEM_INCOME: 1: <25k, 2:>=25k
+
+Poverty Line:
+"1: <=100% of the Federal Poverty Level" 
+"2: >100% and <=120% of the Federal Poverty"
+"3: >120% and <=135% of the Federal Poverty"
+"4: >135% and <=200% of the Federal Poverty"
+"5: >200% of the Federal Poverty Level"
+
+
+```{r message=FALSE}
+fall18%>%ggplot(aes(x=DEM_INCOME,y=PUFFWGT))+geom_col(color="blue")
+
+fall18%>%ggplot(aes(x=DEM_IPR_IND,y=PUFFWGT))+geom_col(color="blue")
+
+fall18%>%ggplot(aes(x=DEM_CBSA,y=PUFFWGT))+geom_col(color="blue")
+
+```
+HCDELAY, PAYPROB
+1- yes 2- No
+
+
+```{r warning=FALSE, message=FALSE}
+
+fall18%>%ggplot(aes(x=factor(ACC_HCDELAY),y=PUFFWGT))+geom_boxplot() + geom_jitter() + theme_bw()
+```
 
