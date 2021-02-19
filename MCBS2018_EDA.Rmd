@@ -1,5 +1,7 @@
 ---
-title: "R Notebook"
+title: "ALY6160_GroupProject"
+author: "Catherine Richard, Shivangi Vashi"
+date: "2/6/2021"
 output: html_notebook
 ---
 
@@ -13,12 +15,16 @@ knitr::opts_chunk$set( warning=FALSE, message=FALSE)
 ```{r}
 library(data.table) 
 library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(skimr)
 
 fall18<-fread("MCBSPUF18/puf2018_1_fall.csv") 
 fall18<-as.data.frame(fall18)
 summer18<-fread("MCBSPUF18/puf2018_3_summer.csv")
 
-fall18_reformatted<-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
+
+fall18_reformatted <-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
 
 
 #ageclass=ADM_H_MEDSTA, insurance_type: Adm_op,dual etc
@@ -40,6 +46,9 @@ dim(fall18)
 
 colnames(fall18)
 head(fall18)
+
+fall18_reformatted  <- fall18_reformatted  %>%
+ select(-SURVEYYR, -VERSION, -PUF_ID)
 ```
 
 
@@ -206,7 +215,7 @@ if all not 1 and not 2 then 99, else if either 1 then 1
 
 
 Mental disorder and depression:
-uberpsych
+mentpsych
 HLT_OCPSYCHO
 HLT_OCDEPRESS
 
@@ -235,16 +244,9 @@ if (cardio				^= 99 or
 	neuro				^= 99 or 	
 	emphysema			^= 99 or 
 	hbp				^= 99)
-	then total= sum(cardio,stroke,cancer,diabetes,arthritis,alzheimer_dementia,uberpsych,neuro,emphysema,hbp);
+	then total= sum(cardio,stroke,cancer,diabetes,arthritis,alzheimer_dementia,mentpsych,neuro,emphysema,hbp);
 	else total=0;
 
-cardio:
-HLT_OCARTERY 
-HLT_OCMYOCAR 
-HLT_OCCHD 
-HLT_OCCFAIL
-HLT_OCHRTCND //valve and rhythm, ocothhrt
-if !=1 and !=2, then 99 else if x or y or z 1: then 1
 
 ```{r}
 flag=0
@@ -273,7 +275,7 @@ for(i in 1:length(cardio)){
 
 ```
 
-#flag for checking whether insurance was not accepted by doc
+# flag for checking whether insurance was not accepted by doc
 
 Variables of significance:
 MA_MADVYRS- those who have MCD for longer, do they have more costs?
@@ -294,7 +296,9 @@ fall18 %>%
 
 
 
+
 ```
+
 
 ```{r}
 
@@ -423,5 +427,7 @@ HCDELAY, PAYPROB
 ```{r warning=FALSE, message=FALSE}
 
 fall18%>%ggplot(aes(x=factor(ACC_HCDELAY),y=PUFFWGT))+geom_boxplot() + geom_jitter() + theme_bw()
+
+
 ```
 
