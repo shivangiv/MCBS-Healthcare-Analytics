@@ -29,7 +29,6 @@ fall18_reformatted <-fread("MCBSPUF18/PUF_1_FALL_reformatted.csv")
 
 #ageclass=ADM_H_MEDSTA, insurance_type: Adm_op,dual etc
 
-colnames(fall18)
 ```
 
 
@@ -44,7 +43,7 @@ summer18<-summer18[,c(1,4:37)]
 dim(fall18)
 
 
-colnames(fall18)
+# colnames(fall18)
 head(fall18)
 
 fall18_reformatted  <- fall18_reformatted  %>%
@@ -120,19 +119,22 @@ fall18<-fall18%>%select(-DEM_MARSTA)
 
 #Clean non response
 fall18<-fall18%>%
-      mutate_all(~ replace(.,.%in%c("D","R",""), 99))
+      mutate_all(~ replace(.,.%in%c("D","R","",""), 99))%>%mutate_all(~replace_na(.,99))
+
+
 
 summer18<-summer18%>%
-      mutate_all(~ replace(.,.%in%c("D","R",""), 99))
+      mutate_all(~ replace(.,.%in%c("D","R",""), 99))%>%mutate_all(~replace_na(.,99))
 dim(fall18)
-dim(mcbs)
 
 
-lapply(fall18,typeof)
-fall18
+
+# lapply(fall18,typeof)
+
 #change char to num
-fall18<-fall18%>%mutate_if(is.character,as.numeric)
-summer18<-summer18%>%mutate_if(is.character,as.numeric)
+fall18<-fall18%>%mutate_all(~as.numeric)
+fall18
+# summer18<-summer18%>%mutate_if(is.character,as.numeric)
 
 ```
 
@@ -141,41 +143,31 @@ if sum(fall18$ACC_HCTROUBL==99)/nrow(fall18) is <1.0
 then fall18<-fall18[fall18$ACC_HCTROUBL!=99]
 ```{r}
 
-na<-function(v,df){
-  x=(length(which(v==99))/nrow(fall18))
-   if(x<0.01&x!=0){
-     df<-df[df$v!=99,]
-   }
-
-}
-
-na<-function(v){
-   return ((length(which(v==99))/nrow(fall18))>0.01)
-}
-
-
-for(i in 1:length(fall18)){
-    fall18<-fall18%>%subset(subset=na(fall18[i]))
-}
-(length(which(fall18$ADM_OP_MDCD==99))/nrow(fall18))
-
 #Removing NAs from variables of interest if %NA is small
+removeNA<-function(v,df){
+  x<-sum(df[v]==99)/nrow(df)
+  if(x<0.01&&x!=0){
+   df<-df%>%filter(df[v]!=99)
+  }
+  return (df)
+}
 
+# fall18<-removeNA(fall18[,50],fall18)
+# nacols<-colnames(fall18[,c(38:40,42:43,46:48,50:51)])
+# nacols
+for(i in names(fall18)){
+  fall18<-removeNA(i,fall18)
+ }
 
-sum(fall18$ACC_HCTROUBL==99)/nrow(fall18)
-sum(fall18$ACC_HCTRBMNY==99)/nrow(fall18)
-sum(fall18$ACC_PAYPROB==99)/nrow(fall18)
-sum(fall18$ACC_PAYOVRTM==99)/nrow(fall18)
-sum(fall18$DEM_EDU==99)/nrow(fall18)
-sum(fall18$ACC_PMNOTGET==99)/nrow(fall18)
-
-
-fall18<-fall18[fall18$ACC_HCDELAY!=99,]
-fall18<-fall18[fall18$ACC_HCTROUBL!=99,]
-fall18<-fall18[fall18$ACC_PAYPROB!=99,]
-fall18<-fall18[fall18$DEM_EDU!=99,]
+# 
+# 
+# fall18<-fall18[fall18$ACC_HCDELAY!=99,]
+# fall18<-fall18[fall18$ACC_HCTROUBL!=99,]
+# fall18<-fall18[fall18$ACC_PAYPROB!=99,]
+# fall18<-fall18[fall18$DEM_EDU!=99,]
 
 ```
+
 value numComor
 0-1="0-1"
 2-3="2-3"
@@ -327,7 +319,7 @@ fall18$ACC_HCDELAY<-as.factor(fall18$ACC_HCDELAY)
 colnames(fall18)
 ggparcoord(fall18,columns=c(236,36:38,40:41,44:46,49),groupColumn =48,scale="globalminmax")
 
-fall18[,c(38:40,42:43,46:48,51)]
+fall18[,c(38:40,42:43,46:48,50:51)]
 
 ```
 
