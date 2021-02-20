@@ -65,13 +65,13 @@ insurance supplement type hierarchy being "Medicaid">"MAdv">"FFSwESI">"FFSwSelf"
 ```{r}
 #Insurance Type
 fall18<-fall18%>%
-              mutate(ins_type=case_when(
-                        ADM_DUAL_FLAG_YR%in%c(2,3) ~ "Medicaid" ,
-                        INS_D_MADV==1 ~"MAdv",
-                        INS_D_PVESI==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwESI",
-                        INS_D_PVSELF==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwSelf",
-                        ADM_FFS_FLAG_YR%in%c(2,3)&INS_D_MADV==2&INS_D_PVESI==2&INS_D_PVSELF==2~"OnlyFFS",
-                          TRUE ~"Missing"))
+            mutate(ins_type=case_when(
+                  ADM_DUAL_FLAG_YR%in%c(2,3) ~ "Medicaid" ,
+                  INS_D_MADV==1 ~"MAdv",
+                  INS_D_PVESI==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwESI",
+                  INS_D_PVSELF==1&ADM_FFS_FLAG_YR%in%c(2,3)~"FFSwSelf",
+                  ADM_FFS_FLAG_YR%in%c(2,3)&INS_D_MADV==2&INS_D_PVESI==2&INS_D_PVSELF==2~"OnlyFFS",
+                    TRUE ~"Missing"))
 
 
 
@@ -132,8 +132,12 @@ dim(fall18)
 # lapply(fall18,typeof)
 
 #change char to num
-fall18<-fall18%>%mutate_all(~as.numeric)
+fall18<-fall18%>%mutate_if(is.character,as.numeric) 
 fall18
+
+
+
+
 # summer18<-summer18%>%mutate_if(is.character,as.numeric)
 
 ```
@@ -154,7 +158,7 @@ removeNA<-function(v,df){
 
 # fall18<-removeNA(fall18[,50],fall18)
 # nacols<-colnames(fall18[,c(38:40,42:43,46:48,50:51)])
-# nacols
+
 for(i in names(fall18)){
   fall18<-removeNA(i,fall18)
  }
@@ -168,104 +172,48 @@ for(i in names(fall18)){
 
 ```
 
-value numComor
-0-1="0-1"
-2-3="2-3"
-4-10="4-10"
-other='5. Missing';
 
-cardio:
-HLT_OCARTERY 
-HLT_OCMYOCAR 
-HLT_OCCHD 
-HLT_OCCFAIL
-HLT_OCHRTCND //valve and rhythm, ocothhrt
-if !=1 and !=2, then 99 else if x or y or z 1: then 1
-
-
-Arthritis:
-HLT_OCARTHRH 
-HLT_OCARTHOT 
-HLT_OCOSARTH 
-if both not 1 and 2- 99
-if either 1 then 1
-
-cancer:
-HLT_OCCANCER
-HLT_OCCSKIN
-if both not 1 and 2 then 99, else if either 1 then 1
-
-cvd:
- 
-HLT_OCARTERY  
-HLT_OCMYOCAR
-HLT_OCCHD
-HLT_OCCFAIL
-HLT_OCCHBP
-HLT_OCSTROKE
-if all not 1 and not 2 then 99, else if either 1 then 1
-
-
-Mental disorder and depression:
-mentpsych
-HLT_OCPSYCHO
-HLT_OCDEPRESS
-
-only mental dis: opsycho
-only depr: ocdepress
-
-neurological- HLT_OCPPARAL
-
-hbp: OCHBP
-stroke: OCSTROKE
-diabetes: ocdiabetes
-
-alzheimers or dementia: HLT_ALZDEM 
-emphysema: HLT_OCEMPHYS
-
-
-
-/*Disease array for COMORBS*/
-if (cardio				^= 99 or 
-	stroke				^= 99 or 
-	cancer				^= 99 or 
-	diabetes			^= 99 or 
-	arthritis			^= 99 or 
-	alzheimer_dementia	^= 99 or
-	uberpsych			^= 99 or 
-	neuro				^= 99 or 	
-	emphysema			^= 99 or 
-	hbp				^= 99)
-	then total= sum(cardio,stroke,cancer,diabetes,arthritis,alzheimer_dementia,mentpsych,neuro,emphysema,hbp);
-	else total=0;
 
 
 ```{r}
-flag=0
-flag<-function(x,flag){
-  if(x!=1&x!=2){
-    flag=99
-  }
-  else if(x==1){
-    flag=1
-  }
-  return (flag)
-}
-c=0
-fall18$HLT_OCARTERY
-flag(select(fall18,"HLT_OCARTERY"),c)
 
-cardio<-c("HLT_OCARTERY" ,"HLT_OCMYOCAR", "HLT_OCCHD","HLT_OCCFAIL","HLT_OCHRTCND")
-c=0
+#Column names for checking comorbidities
 
-for(i in 1:length(cardio)){
-  flag(select(fall18,i),c)
-}
+cardio<-c("HLT_OCARTERY","HLT_OCMYOCAR","HLT_OCCHD","HLT_OCCFAIL","HLT_OCHRTCND")
+arthritis<-c("HLT_OCARTHRH","HLT_OCARTHOT","HLT_OCOSARTH")
+cancer<-c("HLT_OCCANCER","HLT_OCCSKIN")
+cvd<-c("HLT_OCARTERY","HLT_OCMYOCAR","HLT_OCCHD","HLT_OCCFAIL","HLT_OCHBP","HLT_OCSTROKE")
+mentpsych<-c("HLT_OCPSYCHO","HLT_OCDEPRSS")
+
+#Function to flag 1 if patient experiences any of the conditions
+flag<-function(cols){
+  f = ifelse(apply(fall18[cols]!=1&fall18[cols]!=2, 1, all), 99, 
+                               ifelse(apply(fall18[cols]==1,1,any),1,0))
+  return(f)
+} 
 
 
+flags<-matrix(nrow=11432, ncol = 7)
+flags[,1]<-flag(cardio)
+flags[,2]<-flag(arthritis)
+flags[,3]<-flag(cancer)
+flags[,4]<-flag(cvd)
+flags[,5]<-flag(mentpsych)
+flags[,6]<-ifelse(fall18$HLT_OCBETES==1,1,0)
+flags[,7]<-ifelse(fall18$HLT_OCEMPHYS==1,1,0)
+
+
+fall18<-fall18%>%mutate(totalcomorb =
+                          ifelse(apply(flags!=99&flags!=2, 1, any),
+                                 rowSums(flags), 0)
+                        )
+fall18<-select(fall18,-c(all_of(cardio),all_of(cancer),all_of(arthritis),all_of(cvd),all_of(mentpsych),"HLT_OCBETES","HLT_OCEMPHYS"))
 
 
 ```
+
+
+
 
 # flag for checking whether insurance was not accepted by doc
 
