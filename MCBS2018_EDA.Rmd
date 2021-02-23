@@ -224,7 +224,7 @@ rm(cardio,cancer,arthritis,cvd,mentpsych,flags)
 ```
 
 
-### Creating a variable to flag whether the person experiences costburden
+### Creating a variable to flag whether the person experiences cost burden
 
 ACC_HCDELAY- last year ever delay getting hc due to cost
 ACC_PAYPROB- prob paying medical bills
@@ -312,7 +312,7 @@ rm(g1,g2)
 
 ```{r}
 
-df<-data.frame(table(fall18$ins_type,fall18$ACC_HCDELAY))
+df<-data.frame(table(fall18$ins_type, fall18$ACC_HCDELAY))
 names(df) <- c("ins_type","ACC_HCDELAY","Count")
 #df$population<-fall18$PUFFWGT
 
@@ -633,16 +633,25 @@ write.csv(fallsum, file = "fallsum.csv")
 
 fallsum <-fread("fallsum.csv") 
 
+
 set.seed(666)
+
+#set.seed(666)
+
 rawdata <- fallsum
 
 traindata <-rawdata[sample(1:nrow(rawdata),round(0.8*nrow(rawdata))),]
 testdata <-rawdata[-sample(1:nrow(rawdata),round(0.8*nrow(rawdata))),]
 
 #hist(fall18$ACC_HCDELAY)
+```
 
+
+```{r}
 treeRF1 <- randomForest(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, ntree=100)
 treeRF1
+
+
 
 #  Mean of squared residuals: 0.0002781541
                     #% Var explained: 99.64
@@ -652,7 +661,9 @@ treeRF1
 # Tuning parameters:
 # number of trees 
 # number of variables tried at each split ("mtry") = 85
+```
 
+```{r}
 #increased number of trees
 treeRF2 <- randomForest(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, ntree=500)
 treeRF2
@@ -691,7 +702,8 @@ KNN
 
 ```{r}
 #library(class)
-dim(fall18$ACC_HCDELAY)
+dim(raindata$ACC_HCDELAY)
+
 
 #Fitting model
 fit <-knn(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, k=5)
