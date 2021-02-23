@@ -18,6 +18,11 @@ library(tidyverse)
 library(dplyr)
 library(ggplot2)
 library(skimr)
+library(randomForest)
+library(pROC)
+library(caret)
+library(e1071)
+library(class)
 
 fall18<-fread("MCBSPUF18/puf2018_1_fall.csv") 
 fall18<-as.data.frame(fall18)
@@ -309,7 +314,7 @@ rm(g1,g2)
 
 df<-data.frame(table(fall18$ins_type,fall18$ACC_HCDELAY))
 names(df) <- c("ins_type","ACC_HCDELAY","Count")
-df$population<-fall18$PUFFWGT
+#df$population<-fall18$PUFFWGT
 
 ggplot(fall18,aes(x = ageclass,fill=factor(ACC_HCDELAY)))+geom_bar(position = "fill")
 
@@ -392,7 +397,7 @@ Since the drug coverage and food insecurity questions do not affect our analysis
 fallsum<-inner_join(fall18,summer18,by="PUF_ID")
 colnames(fallsum)
 mutate_all(fallsum[,c(38:39,41:42,45:47,49:50,216,218:224,245:247,250:251,253)],as.numeric)%>%cor()%>%ggcorrplot::ggcorrplot()
-
+write.csv(fallsum, file = "WeightedAsthma.csv")
 
 ```
 
@@ -428,6 +433,7 @@ test_label<-label[-train_index,]
 
 
 ```{r}
+
 library(xgboost)
 
 
@@ -468,6 +474,134 @@ params <- list(
 
 X <- xgb.DMatrix(as.matrix(train), label = train_label)
 model <- xgboost(data = X, params = params, nrounds = 100)
+
+write.csv(fallsum, file = "fallsum.csv")
+```
+
+###Random Forest
+```{r}
+fallsum <-fread("fallsum.csv") 
+set.seed(666)
+rawdata <- fallsum
+
+traindata <-rawdata[sample(1:nrow(rawdata),round(0.8*nrow(rawdata))),]
+testdata <-rawdata[-sample(1:nrow(rawdata),round(0.8*nrow(rawdata))),]
+
+#hist(fall18$ACC_HCDELAY)
+
+treeRF1 <- randomForest(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, ntree=100)
+treeRF1
+
+#  Mean of squared residuals: 0.0002781541
+                    #% Var explained: 99.64
+
+### Tuning ### 
+
+# Tuning parameters:
+# number of trees 
+# number of variables tried at each split ("mtry") = 85
+
+#increased number of trees
+treeRF2 <- randomForest(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, ntree=500)
+treeRF2
+
+          # Mean of squared residuals: 0.0001722479
+          #           % Var explained: 99.78
+
+for(mtry in 1:33){
+  fit <- randomForest(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, mtry=mtry, ntree=50)
+  #oob.err[mtry]<- fit$err.rate[50]
+  pred <- predict(fit,testdata, type = "class")
+  cat(mtry," ")
+}
+
+#Predict Output
+predictedRF <- predict(treeRF2,testdata, type = "class")
+
+# Checking classification accuracy
+acctest <- table(predictedRF, testdata$ACC_HCDELAY)
+
+# ROC Curve
+
+treeRF_roc <- roc(testdata$ACC_HCDELAY, as.numeric(predictedRF))
+treeRF_roc
+
+# treeRF_roc<-roc(testdata$ACC_HCDELAY,treeRF$votes[,2])
+
+plot(treeRF_roc, print.auc=TRUE, auc.polygon=TRUE, grid=c(0.1, 0.2),grid.col=c("green", "red"), max.auc.polygon=TRUE,auc.polygon.col="skyblue", print.thres=TRUE,main='ROC curve')
+
+auc(treeRF_roc)
+# Area under the curve:1  -- Overfitted?
+####
+```
+
+KNN
+
+```{r}
+#library(class)
+dim($ACC_HCDELAY)
+
+#Fitting model
+fit <-knn(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, k=5)
+dim(traindata$ACC_HCDELAY)
+summary(fit)
+
+#Predict Output
+predictedKNN <- predict(fit,x_test)
+table(predictedKNN, testdata$ACC_HCDELAY)
+
+# ROC Curve
+KNN_roc<- roc(testdata$ACC_HCDELAY, as.numeric(predictedKNN))
+KNN_roc
+
+#Area under the curve: 0.8816
+
+plot(KNN_roc, print.auc=TRUE, auc.polygon=TRUE, grid=c(0.1, 0.2),grid.col=c("green", "red"), max.auc.polygon=TRUE,auc.polygon.col="Old Lace", print.thres=TRUE,main='KNN ROC curve')
+
+auc(KNN_roc)
+```
+
+###SVM
+Linear
+Radial Basis Function ()
+```{r}
+#library(caret)
+#library(kernlab)
+# library(e1071)
+
+traindata[["ACC_HCDELAY"]] <- factor(traindata[["ACC_HCDELAY"]])
+
+fit <-svm(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata) 
+summary(fit)
+
+#Predict Output
+predictedSVM <- predict(fit,testdata)
+table(predictedSVM, testdata$ACC_HCDELAY)
+
+#predictedSVM    1    2
+#          1     87    0
+#          2     27 1375
+
+# ROC Curve
+SVM_roc<- roc(testdata$ACC_HCDELAY, as.numeric(predictedSVM))
+SVM_roc
+#Area under the curve: 0.8816
+
+plot(SVM_roc, print.auc=TRUE, auc.polygon=TRUE, grid=c(0.1, 0.2),grid.col=c("green", "red"), max.auc.polygon=TRUE,auc.polygon.col="Lavender Blush 3", print.thres=TRUE,main='ROC curve')
+
+auc(SVM_roc)
+```
+
+```{r}
+# svm_Linear <- train(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, method = "svmLinear",
+#                  #trControl=trctrl,
+#                  preProcess = c("center", "scale"),
+#                  tuneLength = 10)
+
+# svm_RBF <-ksvm(x = .-ACC_HCDELAY, y = traindata$ACC_HCDELAY,
+# + kernel ="rbfdot", kpar = "automatic",
+# + C = 1, epsilon = 0.1)
+
 ```
 
 
@@ -488,6 +622,8 @@ p<-test$costburden
 err <- mean(as.numeric(p > 0.5) != train_label)
 print(paste("test-error=", err))
 ```
+
+
 
 ```{r}
 
