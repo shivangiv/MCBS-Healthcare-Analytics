@@ -2,7 +2,8 @@
 title: "ALY6160_GroupProject"
 author: "Catherine Richard, Shivangi Vashi"
 date: "2/6/2021"
-output: html_notebook
+output:
+  html_notebook: default
 ---
 
 ```{r setup, include=FALSE} 
@@ -217,6 +218,9 @@ fall18<-select(fall18,-c(all_of(cardio),all_of(cancer),all_of(arthritis),all_of(
 
 #Remove unwanted variables from the environment
 rm(cardio,cancer,arthritis,cvd,mentpsych,flags)
+
+# fall18<- fall18[,-grep(pattern="^HLT",colnames(fall18))]
+
 ```
 
 
@@ -239,24 +243,15 @@ FIS_FOODLAST, FIS_AFFDMEAL, FIS_SKIPMEAL
 ```{r}
 #Deleting ACC_PAYOVRTM and ACC_COLAGNY since they only apply if ACC_PAYPROB=1
 fall18<-fall18%>%select(-c(ACC_COLAGNCY,ACC_PAYOVRTM))
-fall18<-fall18%>%mutate(costburden=case_when(ACC_HCDELAY==1&ACC_PAYPROB==1~1,
-                                             ACC_HCDELAY==1&ACC_PAYPROB==2~2,
-                                             ACC_HCDELAY==2&ACC_PAYPROB==1~3,
-                                            xor(fall18[49]==1,fall18[50]==1)~4, 
-                                             ACC_HCDELAY!=1&ACC_PAYPROB!=1~5,
-                                             TRUE~99
-                                   ))
-
-# fall18$costburden<-ifelse(fall18[49]==1&fall18[50]==1,1,
-#                    ifelse(fall18[49]==1&fall18[50]==2,2,
-#                    ifelse(fall18[49]==2&fall18[50]==1,3,
-#                    ifelse(xor(fall18[49]==1,fall18[50]==1),4,
-#                    ifelse(fall18[49]==2&fall18[50]==2,5,99)
-#                    ))))
-  
 
 
-table(fall18$costburden)
+fall18<-fall18%>%mutate(costburden=case_when((ACC_HCDELAY==1 | ACC_PAYPROB==1)  ~1,
+                                             TRUE                               ~0))
+
+# fall18$costburden<-as.factor(fall18$costburden)
+
+fall18<-select(fall18,-c("ACC_HCDELAY","ACC_PAYPROB"))
+
 ```
 
 
@@ -334,15 +329,21 @@ fall18%>%
 
 
 ```
+
 1- black 2- white 3-hispanic 4-other
-```{r fig.width=12, message=FALSE, warning=FALSE}
+```{r fig.width=20, message=FALSE, warning=FALSE}
 library(GGally)
 
-fall18$costburden<-as.factor(fall18$costburden)
 
-# colnames(fall18)
 
-ggparcoord(fall18,columns=c(218:219,221,38:39,41:42,45,47,46,50),groupColumn =222,scale="globalminmax")
+ colnames(fall18)
+
+# ggparcoord(fall18,columns=c(218:219,221,38:39,41:42,45,47,46,50),groupColumn =222,scale="globalminmax")
+
+filter(fall18[,-c(1:37,52:66,138:163,217)],costburden==1)%>%
+  ggparcoord(groupColumn =143,scale="globalminmax")
+
+# ggsave("parcord.png",width = 50,height = 40,limitsize = FALSE)
 
 
 ```
@@ -364,8 +365,6 @@ Poverty Line:
 
 ```{r}
 
-unique(fall18_reformatted$DEM_IPR_IND)
-unique(fall18$DEM_IPR_IND)
 
 #Income below Federal Poverty level by yeats in MedADV
 fall18[fall18$MA_MADVYRS!=99,]%>%
@@ -403,12 +402,79 @@ write.csv(fallsum, file = "WeightedAsthma.csv")
 ```
 
 
-# flag for checking whether insurance was not accepted by doc
+#### Modelling
+```{r}
+#Splitting the data into 70% train and 30% test
 
-Variables of significance:
-MA_MADVYRS- those who have MCD for longer, do they have more costs?
+set.seed(123)
+
+label<-as.matrix(as.numeric(fall18$costburden))
+
+
+
+fall18<-fall18%>%select(-c("PUF_ID","PUFFWGT","costburden"))
+#splitting data into train and test
+train_index <- sample(seq_len(nrow(fall18)),size = floor(0.70*nrow(fall18)))
+
+
+train<-fall18[train_index,]
+test<-fall18[-train_index,]
+
+train_label<-label[train_index,]
+test_label<-label[-train_index,]
+
+
+
+
+```
+
+
+
+
 
 ```{r}
+
+library(xgboost)
+
+
+# Parameters for the xgboost model
+params <- list(
+  # logistic model
+  "objective"           = "binary:logistic",
+  
+  # logless for cross-validation
+  "eval_metric"         = "logloss", 
+  
+  #learning rate
+  "eta"                 = 0.1,
+  
+  #depth of tree
+  "max_depth"           = 6, 
+  
+  # min sum of weights
+  # should be high enough to prevent over fitting
+  # but not too high for over fitting
+  "min_child_weight"    = 10,
+  
+  # the min loss value require to split
+  "gamma"               = 0.70,
+  
+  # fraction of observations to be included in each tree 
+  # generally varies from 0.5-1
+  "subsample"           = 0.75,
+  
+  # fraction of column to be randomly sample in each tree
+  "colsample_bytree"    = 0.95,
+  
+  # regularization coefficients
+  "alpha"               = 2e-05,
+  "lambda"              = 10 
+)
+
+
+X <- xgb.DMatrix(as.matrix(train), label = train_label)
+model <- xgboost(data = X, params = params, nrounds = 100)
+
 write.csv(fallsum, file = "fallsum.csv")
 ```
 
@@ -535,6 +601,112 @@ auc(SVM_roc)
 # svm_RBF <-ksvm(x = .-ACC_HCDELAY, y = traindata$ACC_HCDELAY,
 # + kernel ="rbfdot", kpar = "automatic",
 # + C = 1, epsilon = 0.1)
+
 ```
 
+
+```{r fig.height=10}
+importance <- xgb.importance(colnames(X), model = model)
+x<-xgb.ggplot.importance(importance)
+X
+X2 <- xgb.DMatrix(data=as.matrix(test),label=test_label)
+
+# predicting reordered values from test dataset
+test$costburden <- predict(model, X2)
+
+
+
+
+#Test error 
+p<-test$costburden
+err <- mean(as.numeric(p > 0.5) != train_label)
+print(paste("test-error=", err))
+```
+
+
+
+```{r}
+
+data(train, 
+     package='xgboost')
+data(test,package = 'xgboost')
+
+score_model <- function(model, 
+                        epoch, 
+                        data, 
+                        datasetname) {
+  pred <- predict(model, 
+                  newdata = data$data, 
+                  ntreelimit = epoch)
+  acc <- mean(data$label == 
+                ifelse(pred>=0.5,
+                       1.0,
+                       0.0))
+  dev <- sigr::calcDeviance(pred, 
+                            ifelse(data$label>=0.5,
+                                   TRUE,
+                                   FALSE))
+  auc <- sigr::calcAUC(pred, 
+                       ifelse(data$label>=0.5,
+                              TRUE,
+                              FALSE))
+  data.frame(dataset = datasetname,
+             epoch = epoch, 
+             accuracy = acc,
+             mean_deviance = dev/nrow(data$data),
+             AUC = auc,
+             stringsAsFactors = FALSE)
+}
+
+score_model_trajectory <- function(model, 
+                                   epochs, 
+                                   data, 
+                                   datasetname) {
+  evals <- lapply(epochs,
+                  function(epoch) {
+                    score_model(model, 
+                                epoch, 
+                                data, 
+                                datasetname)
+                  })
+  r <- dplyr::bind_rows(evals)
+  colnames(r) <- paste(datasetname, 
+                       colnames(r), 
+                       sep = "_")
+  r
+}
+
+eval <- 
+  cbind(
+    score_model_trajectory(model, 
+                           80, 
+                           X, 
+                           "train"),
+    score_model_trajectory(model, 
+                           80, 
+                           X2, 
+                           "test"))
+
+cols <- c("train_epoch", "train_accuracy", 
+          "train_mean_deviance", "train_AUC", 
+          "test_accuracy", "test_mean_deviance", 
+          "test_AUC")
+eval <- eval[, cols, drop = FALSE]
+knitr::kable(head(eval))
+
+cT <- dplyr::tribble(
+  ~measure,                 ~training,             ~validation,
+  "minus mean deviance",    "train_mean_deviance", "train_mean_deviance",
+  "accuracy",               "train_accuracy",      "test_accuracy",
+  "AUC",                    "train_AUC",           "test_AUC"
+)
+
+plot_fit_trajectory(eval,
+                    column_description = cT,
+                    epoch_name = "train_epoch",
+                    needs_flip = "minus mean deviance",
+                    pick_metric = "minus mean deviance",
+                    title = "xgboost performance trajectories")
+
+```
 
