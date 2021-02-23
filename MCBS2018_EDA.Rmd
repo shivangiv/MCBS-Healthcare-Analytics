@@ -405,26 +405,32 @@ write.csv(fallsum, file = "WeightedAsthma.csv")
 #### Modelling
 ```{r}
 #Splitting the data into 70% train and 30% test
-
+library(Matrix)
 set.seed(123)
 
+fall18<-fall18%>%select(-c("PUF_ID","PUFFWGT"))
 label<-as.matrix(as.numeric(fall18$costburden))
+sparse_mat<-sparse.model.matrix(costburden~.,data=fall18)
 
 
+fall18<-fall18%>%select(-c("costburden"))
 
-fall18<-fall18%>%select(-c("PUF_ID","PUFFWGT","costburden"))
+
 #splitting data into train and test
 train_index <- sample(seq_len(nrow(fall18)),size = floor(0.70*nrow(fall18)))
 
 
 train<-fall18[train_index,]
 test<-fall18[-train_index,]
+sparsetrain<-sparse_mat[train_index,]
+sparsetest<-sparse_mat[-train_index,]
 
 train_label<-label[train_index,]
 test_label<-label[-train_index,]
 
 
-
+s1<-list(sparsetrain,train_label)
+s2<-list(sparsetest,test_label)
 
 ```
 
@@ -441,20 +447,12 @@ library(xgboost)
 params <- list(
   # logistic model
   "objective"           = "binary:logistic",
-  
-  # logless for cross-validation
-  "eval_metric"         = "logloss", 
-  
   #learning rate
-  "eta"                 = 0.1,
+  "eta"                 = 1,
   
   #depth of tree
-  "max_depth"           = 6, 
-  
-  # min sum of weights
-  # should be high enough to prevent over fitting
-  # but not too high for over fitting
-  "min_child_weight"    = 10,
+  "max_depth"           = 5, 
+
   
   # the min loss value require to split
   "gamma"               = 0.70,
@@ -464,23 +462,177 @@ params <- list(
   "subsample"           = 0.75,
   
   # fraction of column to be randomly sample in each tree
-  "colsample_bytree"    = 0.95,
+  "colsample_bytree"    = 0.70,
   
   # regularization coefficients
   "alpha"               = 2e-05,
   "lambda"              = 10 
-)
+) 
 
 
 X <- xgb.DMatrix(as.matrix(train), label = train_label)
-model <- xgboost(data = X, params = params, nrounds = 100)
+X2 <- xgb.DMatrix(data=as.matrix(test),label=test_label)
 
-write.csv(fallsum, file = "fallsum.csv")
+model1 <- xgboost(data = X,max.depth = 4, 
+                      eta = 1, 
+                      nthread = 2, 
+                      nround = 100, 
+                      objective = "binary:logistic")
+
+
+model2 <- xgboost(data = X,
+                      nround = 100, 
+                      params = params)
+
+
+epochs <- 20
+
+model3<-xgboost(data = s1[[1]], 
+                     label = s1[[2]],
+                      max.depth = 2, 
+                      eta = 1, 
+                      nthread = 2, 
+                      nround = epochs, 
+                      objective = "binary:logistic")
+
 ```
 
-###Random Forest
+
 ```{r}
+
+
+
+score_model <- function(model, 
+                        epoch, 
+                        data, 
+                        datasetname) {
+  pred <- predict(model, 
+                  newdata = data[[1]], 
+                  ntreelimit = epoch)
+  
+  acc <- mean(data[[2]] == 
+                ifelse(pred>=0.5,
+                       1.0,
+                       0.0))
+  dev <- sigr::calcDeviance(pred, 
+                            ifelse(data[[2]]>=0.5,
+                                   TRUE,
+                                   FALSE))
+  auc <- sigr::calcAUC(pred, 
+                       ifelse(data[[2]]>=0.5,
+                              TRUE,
+                              FALSE))
+  data.frame(dataset = datasetname,
+             epoch = epoch, 
+             accuracy = acc,
+             mean_deviance = dev/nrow(data[[1]]),
+             AUC = auc,
+             stringsAsFactors = FALSE)
+}
+
+score_model_trajectory <- function(model, 
+                                   epochs, 
+                                   data, 
+                                   datasetname) {
+  evals <- lapply(epochs,
+                  function(epoch) {
+                    score_model(model, 
+                                epoch, 
+                                data, 
+                                datasetname)
+                  })
+  r <- dplyr::bind_rows(evals)
+  colnames(r) <- paste(datasetname, 
+                       colnames(r), 
+                       sep = "_")
+  r
+}
+
+```
+
+
+```{r}
+
+# eval<-list()
+# 
+# 
+# eval[[1]] <- 
+#   cbind(
+#     score_model_trajectory(model, 
+#                            100, 
+#                            s1, 
+#                            "train"),
+#     score_model_trajectory(model1, 
+#                            100, 
+#                            s2, 
+#                            "test"))
+# 
+# eval[[3]] <- 
+#   cbind(
+#     score_model_trajectory(model3, 
+#                            epochs, 
+#                            s1, 
+#                            "train"),
+#     score_model_trajectory(model3, 
+#                            epochs, 
+#                            s2, 
+#                            "test"))
+# cols <- c("train_epoch", "train_accuracy", 
+#           "train_mean_deviance", "train_AUC", 
+#           "test_accuracy", "test_mean_deviance", 
+#           "test_AUC")
+# eval <- as.data.frame(t(eval))
+
+
+
+# cT <- dplyr::tribble(
+#   ~measure,                 ~training,             ~validation,
+#   "minus mean deviance",    "train_mean_deviance", "train_mean_deviance",
+#   "accuracy",               "train_accuracy",      "test_accuracy",
+#   "AUC",                    "train_AUC",           "test_AUC"
+# )
+
+# 
+# WVPlots::plot_fit_trajectory(eval,
+#                     column_description = cT,
+#                     epoch_name = "train_epoch",
+#                     needs_flip = "minus mean deviance",
+#                     pick_metric = "minus mean deviance",
+#                     title = "xgboost performance trajectories")
+
+
+
+```
+
+
+```{r fig.height=10}
+importance <- xgb.importance(colnames(X), model = model1)
+x<-xgb.ggplot.importance(top_n(importance,25))
+
+x
+importance$Feature[1:25]
+
+# predicting reordered values from test dataset
+test$costburden <- predict(model, X2)
+
+
+#Test error 
+p<-test$costburden
+err <- mean(as.numeric(p > 0.5) != train_label)
+print(paste("test-error=", err))
+```
+
+
+
+
+###Random Forest
+
+
+```{r}
+write.csv(fallsum, file = "fallsum.csv")
+
 fallsum <-fread("fallsum.csv") 
+
 set.seed(666)
 rawdata <- fallsum
 
@@ -539,7 +691,7 @@ KNN
 
 ```{r}
 #library(class)
-dim($ACC_HCDELAY)
+dim(fall18$ACC_HCDELAY)
 
 #Fitting model
 fit <-knn(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, k=5)
@@ -592,6 +744,7 @@ plot(SVM_roc, print.auc=TRUE, auc.polygon=TRUE, grid=c(0.1, 0.2),grid.col=c("gre
 auc(SVM_roc)
 ```
 
+
 ```{r}
 # svm_Linear <- train(traindata$ACC_HCDELAY ~ .-ACC_HCDELAY, traindata, method = "svmLinear",
 #                  #trControl=trctrl,
@@ -604,109 +757,4 @@ auc(SVM_roc)
 
 ```
 
-
-```{r fig.height=10}
-importance <- xgb.importance(colnames(X), model = model)
-x<-xgb.ggplot.importance(importance)
-X
-X2 <- xgb.DMatrix(data=as.matrix(test),label=test_label)
-
-# predicting reordered values from test dataset
-test$costburden <- predict(model, X2)
-
-
-
-
-#Test error 
-p<-test$costburden
-err <- mean(as.numeric(p > 0.5) != train_label)
-print(paste("test-error=", err))
-```
-
-
-
-```{r}
-
-data(train, 
-     package='xgboost')
-data(test,package = 'xgboost')
-
-score_model <- function(model, 
-                        epoch, 
-                        data, 
-                        datasetname) {
-  pred <- predict(model, 
-                  newdata = data$data, 
-                  ntreelimit = epoch)
-  acc <- mean(data$label == 
-                ifelse(pred>=0.5,
-                       1.0,
-                       0.0))
-  dev <- sigr::calcDeviance(pred, 
-                            ifelse(data$label>=0.5,
-                                   TRUE,
-                                   FALSE))
-  auc <- sigr::calcAUC(pred, 
-                       ifelse(data$label>=0.5,
-                              TRUE,
-                              FALSE))
-  data.frame(dataset = datasetname,
-             epoch = epoch, 
-             accuracy = acc,
-             mean_deviance = dev/nrow(data$data),
-             AUC = auc,
-             stringsAsFactors = FALSE)
-}
-
-score_model_trajectory <- function(model, 
-                                   epochs, 
-                                   data, 
-                                   datasetname) {
-  evals <- lapply(epochs,
-                  function(epoch) {
-                    score_model(model, 
-                                epoch, 
-                                data, 
-                                datasetname)
-                  })
-  r <- dplyr::bind_rows(evals)
-  colnames(r) <- paste(datasetname, 
-                       colnames(r), 
-                       sep = "_")
-  r
-}
-
-eval <- 
-  cbind(
-    score_model_trajectory(model, 
-                           80, 
-                           X, 
-                           "train"),
-    score_model_trajectory(model, 
-                           80, 
-                           X2, 
-                           "test"))
-
-cols <- c("train_epoch", "train_accuracy", 
-          "train_mean_deviance", "train_AUC", 
-          "test_accuracy", "test_mean_deviance", 
-          "test_AUC")
-eval <- eval[, cols, drop = FALSE]
-knitr::kable(head(eval))
-
-cT <- dplyr::tribble(
-  ~measure,                 ~training,             ~validation,
-  "minus mean deviance",    "train_mean_deviance", "train_mean_deviance",
-  "accuracy",               "train_accuracy",      "test_accuracy",
-  "AUC",                    "train_AUC",           "test_AUC"
-)
-
-plot_fit_trajectory(eval,
-                    column_description = cT,
-                    epoch_name = "train_epoch",
-                    needs_flip = "minus mean deviance",
-                    pick_metric = "minus mean deviance",
-                    title = "xgboost performance trajectories")
-
-```
 
